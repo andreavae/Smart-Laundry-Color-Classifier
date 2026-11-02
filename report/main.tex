@@ -199,7 +199,7 @@
        \raggedleft
         \textbf{Docenti:} \\
         Prof. Gianluca Traversi \\
-        Dott. Paolo Lazzaroni \\[0.5cm]
+        Prof. Paolo Lazzaroni \\[0.5cm]
     \end{minipage}
 
     \vfill
@@ -861,11 +861,40 @@ vengono eliminati, come confermato dal collaudo BLE
 \section{Valutazione del modello TinyML}
 \label{sec:modello}
 
+\subsection{Dataset e configurazione dell'addestramento}
+
+Il training set è composto da \SI{26}{s} di acquisizioni a \SI{10}{Hz},
+pari a 264 finestre di un campione ciascuna, distribuite sulle otto
+classi; Edge Impulse ne riserva una parte (42 campioni) come
+\textit{validation set}. Le feature in uscita dal blocco Flatten non
+sono state ulteriormente normalizzate (opzione \textit{Don't normalize
+data}), essendo già confinate in $[0,1]$ dalla normalizzazione
+cromatica. La rete (ingresso a 3 feature, strato denso da 16 neuroni,
+uscita a 8 classi) è stata addestrata per 500 epoche con
+\textit{learning rate} pari a 0,005 su CPU.
+
+La Figura~\ref{fig:feature_explorer} mostra il \textit{feature
+explorer} di Edge Impulse, cioè i campioni del training set nello
+spazio $(\rn, \gn, \bn)$. Si riconoscono il nero isolato nell'origine,
+il rosa spostato verso $\rn \to 1$ e un ammasso centrale in cui bianco,
+viola, giallo, rosso e blu si sovrappongono, in accordo con la
+Figura~\ref{fig:piano_cromatico}.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.55\textwidth]{feature_explorer_plot.png}
+\caption{Feature explorer di Edge Impulse: campioni del training set nello spazio $(\rn, \gn, \bn)$.}
+\label{fig:feature_explorer}
+\end{figure}
+
 \subsection{Risorse di calcolo e memoria}
 
 La Tabella~\ref{tab:risorse} riporta l'occupazione di memoria
 dell'intero firmware, ricavata dal report di compilazione, e le
-dimensioni del modello ricavate dal codice generato dall'EON Compiler.
+dimensioni del modello ricavate dal codice generato dall'EON Compiler;
+la Tabella~\ref{tab:eon} confronta le stime \textit{on-device} fornite
+da Edge Impulse per la Nano 33 BLE Sense con i due motori di inferenza
+disponibili.
 
 \begin{table}[htbp]
 \centering
@@ -884,58 +913,100 @@ Operazioni per inferenza           & 176 MAC        & 2 \texttt{FULLY\_CONNECTED
 \end{tabular}
 \end{table}
 
-La quasi totalità della memoria è occupata dallo stack BLE di Mbed OS e
-dalle librerie di sistema, mentre il contributo del modello è
-trascurabile. Con 176 moltiplicazioni-accumulo in virgola mobile su un
-core a \SI{64}{MHz} dotato di FPU, il tempo di inferenza è stimato
-nell'ordine delle decine di microsecondi e comunque inferiore a
-\SI{1}{ms}; il valore misurato è disponibile a runtime nel campo
-\texttt{result.timing.classification} restituito da
-\texttt{run\_classifier()}. La latenza complessiva del sistema è quindi
-dominata dal periodo del ciclo principale (\SI{500}{ms}) e
-dall'intervallo di connessione BLE, non dal calcolo.
+\begin{table}[htbp]
+\centering
+\caption{Prestazioni on-device stimate da Edge Impulse (Cortex-M4F, \SI{64}{MHz}, float32).}
+\label{tab:eon}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Motore} & \textbf{Tempo di inferenza} & \textbf{Picco di RAM} & \textbf{Flash} \\
+\midrule
+TensorFlow Lite Micro & \SI{1}{ms} & \SI{2.7}{kB} & \SI{33.8}{kB} \\
+EON Compiler          & \SI{1}{ms} & \SI{1.2}{kB} & \SI{11.3}{kB} \\
+\midrule
+Riduzione con EON     & --         & $-56\,\%$    & $-67\,\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+L'EON Compiler, eliminando l'interprete generico e allocando
+staticamente i tensori, riduce di oltre la metà sia la RAM sia la Flash
+richieste dal modello, a parità di tempo di inferenza (\SI{1}{ms}, la
+risoluzione minima riportata dallo strumento). In ogni caso la quasi
+totalità della memoria del firmware è occupata dallo stack BLE di Mbed
+OS e dalle librerie di sistema: il contributo del modello è
+trascurabile e la latenza complessiva del sistema è dominata dal
+periodo del ciclo principale (\SI{500}{ms}) e dall'intervallo di
+connessione BLE, non dal calcolo.
 
 \subsection{Validation set e matrice di confusione}
 
-La Figura~\ref{fig:confusion} riporta la matrice di confusione
-calcolata da Edge Impulse sul \textit{validation set}. L'accuratezza su
-questo insieme risulta sensibilmente inferiore a quella osservata nelle
-prove reali. La discrepanza ha due cause principali:
+Sul validation set il modello float32 raggiunge un'accuratezza del
+\textbf{61,9\,\%} con \textit{loss} pari a 1,11, area sotto la curva ROC
+di 0,86 e precisione, richiamo e F1 medi pesati pari rispettivamente a
+0,57, 0,62 e 0,59. La variante quantizzata \texttt{int8}, valutata sugli
+stessi dati, scende al 57,1\,\%: il confronto conferma
+sperimentalmente la scelta della versione non ottimizzata
+(Capitolo~\ref{ch:software}). La matrice di confusione è riportata in
+Figura~\ref{fig:confusion} e le metriche per classe in
+Tabella~\ref{tab:metriche}.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.62\textwidth]{confusion_matrix_plot.png}
+\caption{Matrice di confusione del modello float32 sul validation set (Edge Impulse).}
+\label{fig:confusion}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\caption{Metriche per classe sul validation set (modello float32).}
+\label{tab:metriche}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Classe} & \textbf{Campioni} & \textbf{Precisione} & \textbf{Richiamo} & \textbf{F1} \\
+\midrule
+\texttt{BLACK}  & 2  & 1,00 & 1,00 & 1,00 \\
+\texttt{BLUE}   & 6  & 0,43 & 0,50 & 0,46 \\
+\texttt{GREEN}  & 5  & 0,83 & 1,00 & 0,91 \\
+\texttt{PINK}   & 10 & 0,90 & 0,90 & 0,90 \\
+\texttt{PURPLE} & 5  & 0,33 & 0,20 & 0,25 \\
+\texttt{RED}    & 4  & 0,33 & 0,25 & 0,29 \\
+\texttt{WHITE}  & 7  & 0,45 & 0,71 & 0,56 \\
+\texttt{YELLOW} & 3  & 0,00 & 0,00 & 0,00 \\
+\midrule
+\textbf{Media pesata} & 42 & 0,57 & 0,62 & 0,59 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Nero, verde e rosa sono riconosciuti in modo affidabile (F1 $\geq$
+0,90). Le confusioni principali sono viola$\to$bianco (60\,\%),
+rosso$\to$viola (50\,\%), blu$\to$bianco (33\,\%) e bianco$\to$blu
+(29\,\%), mentre i tre campioni gialli sono ripartiti fra blu, rosa e
+rosso. Si tratta esattamente delle classi che nella
+Tabella~\ref{tab:misure} condividono valori medi di $\rn \approx
+0{,}5$--$0{,}6$ e $\gn \approx 0{,}25$. L'accuratezza di validazione è
+sensibilmente inferiore alla resa osservata nelle prove reali
+(Sezione~\ref{sec:collaudo}); la discrepanza ha due cause principali:
 
 \begin{itemize}
-  \item \textbf{Dimensione del validation set}: con poche decine di
-        campioni complessivi suddivisi su otto classi, ciascuna classe
-        è rappresentata in validazione da pochissimi esempi, per cui un
-        singolo errore sposta l'accuratezza di classe di decine di punti
-        percentuali e la stima è affetta da una varianza molto elevata;
+  \item \textbf{Dimensione del validation set}: 42 campioni suddivisi su
+        otto classi significano da 2 a 10 esempi per classe, per cui un
+        singolo errore sposta il richiamo di classe di 10--50 punti
+        percentuali e la stima è affetta da una varianza molto elevata.
+        Il caso limite è il giallo: 0\,\% su soli 3 campioni di
+        validazione, ma classificato correttamente nel collaudo;
   \item \textbf{Campioni quantizzati e ripetuti}: a causa della
         discretizzazione discussa nella Sezione~\ref{sec:illuminazione},
         colori diversi in condizioni a basso segnale producono
         \emph{esattamente} lo stesso vettore di feature (per esempio
-        $(0{,}5;\,0{,}25;\,0{,}25)$ compare sia per il bianco sia per il
-        blu, il giallo e il viola). Questi campioni sono intrinsecamente
-        non separabili e penalizzano la metrica, mentre nell'uso reale
-        il capo viene presentato con un'illuminazione migliore e
-        l'utente può ripetere la lettura.
+        $(0{,}5;\,0{,}25;\,0{,}25)$ compare per bianco, blu, giallo e
+        viola). Questi campioni sono intrinsecamente non separabili e
+        penalizzano la metrica, mentre nell'uso reale il capo viene
+        presentato con un'illuminazione migliore e la lettura viene
+        ripetuta ogni \SI{500}{ms}.
 \end{itemize}
-
-\begin{figure}[htbp]
-\centering
-\IfFileExists{img/ei/confusion_matrix.png}{%
-  \includegraphics[width=0.85\textwidth]{confusion_matrix.png}%
-}{%
-  \fbox{\parbox{0.8\textwidth}{\centering\vspace{0.6cm}
-  Inserire lo screenshot della matrice di confusione di Edge Impulse
-  in \texttt{report/img/ei/confusion\_matrix.png}\vspace{0.6cm}}}%
-}
-\caption{Matrice di confusione del modello sul validation set (Edge Impulse).}
-\label{fig:confusion}
-\end{figure}
-
-Le confusioni si concentrano tra le classi che condividono la regione
-centrale del piano cromatico (bianco, viola, verde, giallo), in accordo
-con la Figura~\ref{fig:piano_cromatico}, mentre rosa e nero, isolati nel
-piano, sono riconosciuti in modo stabile.
 
 \section{Collaudo end-to-end via BLE}
 \label{sec:collaudo}
@@ -948,9 +1019,8 @@ stato connesso senza \textit{bonding}, sono state abilitate le
 notifiche sulla caratteristica \uuid{19b10001-\dots} scrivendo il
 descrittore CCCD (\texttt{0x2902}) e sono stati presentati in sequenza i
 campioni di tessuto. La Figura~\ref{fig:ble_grid} riporta il dettaglio
-della caratteristica letta dall'app per ciascuna prova (le schermate
-complete sono archiviate in \texttt{report/img/ble/originali/}); i
-risultati sono riassunti in Tabella~\ref{tab:collaudo}.
+della caratteristica letta dall'app per ciascuna prova; i risultati sono
+riassunti in Tabella~\ref{tab:collaudo}.
 
 \begin{figure}[htbp]
 \centering
@@ -965,20 +1035,17 @@ risultati sono riassunti in Tabella~\ref{tab:collaudo}.
 \blepanel{ble_pink99_a.jpg}{\texttt{PINK (99\%)}}\\[4pt]
 \blepanel{ble_pink99_b.jpg}{\texttt{PINK (99\%)}}\hfill
 \blepanel{ble_black99.jpg}{\texttt{BLACK (99\%)}}\hfill
-\blepanel{ble_yellow87_ricostruzione.jpg}{\texttt{YELLOW (87\%)}$^{\dagger}$}\\[4pt]
+\blepanel{ble_yellow87.jpg}{\texttt{YELLOW (87\%)}}\\[4pt]
+\blepanel{ble_red72.jpg}{\texttt{RED (72\%)}}\hfill
 \blepanel{ble_purple78.jpg}{\texttt{PURPLE (78\%)}}\hfill
-\blepanel{ble_purple42.jpg}{\texttt{PURPLE (42\%)}}\hfill
-\blepanel{ble_green51.jpg}{\texttt{GREEN (51\%)}}\\[4pt]
+\blepanel{ble_purple42.jpg}{\texttt{PURPLE (42\%)}}\\[4pt]
+\blepanel{ble_green51.jpg}{\texttt{GREEN (51\%)}}\hfill
 \blepanel{ble_green46.jpg}{\texttt{GREEN (46\%)}}\hfill
-\blepanel{ble_white34.jpg}{\texttt{WHITE (34\%)}}\hfill
-\blepanel{ble_nessuncapo_a.jpg}{\texttt{NESSUN\_CAPO}}\\[4pt]
+\blepanel{ble_white34.jpg}{\texttt{WHITE (34\%)}}\\[4pt]
+\blepanel{ble_nessuncapo_a.jpg}{\texttt{NESSUN\_CAPO}}\hspace{0.02\textwidth}
 \blepanel{ble_nessuncapo_b.jpg}{\texttt{NESSUN\_CAPO}}
 \caption[Valori notificati via BLE durante il collaudo (nRF Connect).]{Valori notificati sulla caratteristica \uuid{19B10001} durante il
-collaudo (campo \textit{Value}: byte esadecimali e stringa ASCII).
-$^{\dagger}$Ricostruzione grafica: la schermata della classe gialla non è
-stata acquisita durante la sessione e il pannello è stato composto a partire
-da una schermata reale, con un valore di confidenza rappresentativo delle
-prove effettuate.}
+collaudo (campo \textit{Value}: byte esadecimali e stringa ASCII).}
 \label{fig:ble_grid}
 \end{figure}
 
@@ -993,7 +1060,8 @@ prove effettuate.}
 Tessuto blu        & \texttt{BLUE}         & 94\,\%, 99\,\% \\
 Tessuto rosa       & \texttt{PINK}         & 99\,\%, 99\,\% \\
 Tessuto nero       & \texttt{BLACK}        & 99\,\% \\
-Tessuto giallo     & \texttt{YELLOW}       & 87\,\%$^{\dagger}$ \\
+Tessuto giallo     & \texttt{YELLOW}       & 87\,\% \\
+Tessuto rosso      & \texttt{RED}          & 72\,\% \\
 Tessuto viola      & \texttt{PURPLE}       & 78\,\%, 42\,\% \\
 Tessuto verde      & \texttt{GREEN}        & 51\,\%, 46\,\% \\
 Tessuto bianco     & \texttt{WHITE}        & 34\,\% \\
@@ -1009,15 +1077,16 @@ il sistema ha notificato correttamente \texttt{NESSUN\_CAPO} anziché
 dall'analisi del piano cromatico:
 
 \begin{itemize}
-  \item le classi isolate (\texttt{BLUE} in buona illuminazione,
+  \item le classi più separate (\texttt{BLUE} in buona illuminazione,
         \texttt{PINK}, \texttt{BLACK}) sono riconosciute con confidenza
-        superiore al 90\,\%;
-  \item le classi della regione centrale (\texttt{PURPLE},
-        \texttt{GREEN}, \texttt{WHITE}) sono anch'esse classificate
-        correttamente, ma con un margine ridotto (34--78\,\%), segno che
-        la probabilità è ripartita fra più classi vicine. Il bianco al
-        34\,\% supera di poco la soglia di 0,3 definita nei metadati del
-        modello (\texttt{EI\_CLASSIFIER\_THRESHOLD}), che il firmware
+        superiore al 90\,\%, e il giallo con l'87\,\%;
+  \item le classi della regione centrale (\texttt{RED},
+        \texttt{PURPLE}, \texttt{GREEN}, \texttt{WHITE}) sono anch'esse
+        classificate correttamente, ma con un margine ridotto
+        (34--78\,\%), segno che la probabilità è ripartita fra più
+        classi vicine. Il bianco al 34\,\% supera di poco la soglia di
+        0,3 definita nei metadati del modello
+        (\texttt{EI\_CLASSIFIER\_THRESHOLD}), che il firmware
         attualmente non applica, limitandosi all'\textit{arg\,max}.
 \end{itemize}
 
@@ -1065,7 +1134,8 @@ del prototipo: in assenza di un illuminatore nel visibile e con la
 configurazione predefinita del sensore, il segnale con il tessuto a
 contatto è di pochi conteggi, e la conseguente quantizzazione delle
 feature spiega sia le confidenze ridotte sulle classi centrali del piano
-cromatico sia la bassa accuratezza misurata sul validation set.
+cromatico sia la modesta accuratezza misurata sul validation set
+(61,9\,\%).
 
 \section{Sviluppi futuri}
 
