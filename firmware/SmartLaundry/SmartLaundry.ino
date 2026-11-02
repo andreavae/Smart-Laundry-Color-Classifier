@@ -1,4 +1,3 @@
-/* Includes ---------------------------------------------------------------- */
 #include <Smart-Laundry-Color-Classifier_inferencing.h>
 #include <Arduino_APDS9960.h>
 #include <ArduinoBLE.h>
