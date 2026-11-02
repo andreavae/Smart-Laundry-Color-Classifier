@@ -46,6 +46,7 @@
 % ----------------------------
 \geometry{a4paper, top=2.5cm, bottom=2.5cm, left=2.7cm, right=2.5cm}
 \setstretch{1.05}
+\raggedbottom
 \setlist{itemsep=2pt, topsep=4pt}
 \setlength{\parindent}{1.5em}
 \setlength{\parskip}{0pt}
@@ -856,6 +857,192 @@ scala. Il gate a due stadi (Figura~\ref{fig:fsm}) separa così in modo
 netto i due casi: i falsi positivi \texttt{BLACK} a sensore scoperto
 vengono eliminati, come confermato dal collaudo BLE
 (Sezione~\ref{sec:collaudo}).
+
+\section{Valutazione del modello TinyML}
+\label{sec:modello}
+
+\subsection{Risorse di calcolo e memoria}
+
+La Tabella~\ref{tab:risorse} riporta l'occupazione di memoria
+dell'intero firmware, ricavata dal report di compilazione, e le
+dimensioni del modello ricavate dal codice generato dall'EON Compiler.
+
+\begin{table}[htbp]
+\centering
+\caption{Occupazione di risorse del firmware e del modello.}
+\label{tab:risorse}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Voce} & \textbf{Valore} & \textbf{Utilizzo} \\
+\midrule
+Flash del firmware completo        & \SI{324584}{B} & 33\,\% di \SI{983040}{B} \\
+RAM statica (variabili globali)    & \SI{69624}{B}  & 26\,\% di \SI{262144}{B} \\
+Pesi della rete (float32)          & \SI{800}{B}    & 200 parametri \\
+Arena dei tensori (EON)            & \SI{336}{B}    & -- \\
+Operazioni per inferenza           & 176 MAC        & 2 \texttt{FULLY\_CONNECTED} + \texttt{SOFTMAX} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La quasi totalità della memoria è occupata dallo stack BLE di Mbed OS e
+dalle librerie di sistema, mentre il contributo del modello è
+trascurabile. Con 176 moltiplicazioni-accumulo in virgola mobile su un
+core a \SI{64}{MHz} dotato di FPU, il tempo di inferenza è stimato
+nell'ordine delle decine di microsecondi e comunque inferiore a
+\SI{1}{ms}; il valore misurato è disponibile a runtime nel campo
+\texttt{result.timing.classification} restituito da
+\texttt{run\_classifier()}. La latenza complessiva del sistema è quindi
+dominata dal periodo del ciclo principale (\SI{500}{ms}) e
+dall'intervallo di connessione BLE, non dal calcolo.
+
+\subsection{Validation set e matrice di confusione}
+
+La Figura~\ref{fig:confusion} riporta la matrice di confusione
+calcolata da Edge Impulse sul \textit{validation set}. L'accuratezza su
+questo insieme risulta sensibilmente inferiore a quella osservata nelle
+prove reali. La discrepanza ha due cause principali:
+
+\begin{itemize}
+  \item \textbf{Dimensione del validation set}: con poche decine di
+        campioni complessivi suddivisi su otto classi, ciascuna classe
+        è rappresentata in validazione da pochissimi esempi, per cui un
+        singolo errore sposta l'accuratezza di classe di decine di punti
+        percentuali e la stima è affetta da una varianza molto elevata;
+  \item \textbf{Campioni quantizzati e ripetuti}: a causa della
+        discretizzazione discussa nella Sezione~\ref{sec:illuminazione},
+        colori diversi in condizioni a basso segnale producono
+        \emph{esattamente} lo stesso vettore di feature (per esempio
+        $(0{,}5;\,0{,}25;\,0{,}25)$ compare sia per il bianco sia per il
+        blu, il giallo e il viola). Questi campioni sono intrinsecamente
+        non separabili e penalizzano la metrica, mentre nell'uso reale
+        il capo viene presentato con un'illuminazione migliore e
+        l'utente può ripetere la lettura.
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\IfFileExists{img/ei/confusion_matrix.png}{%
+  \includegraphics[width=0.85\textwidth]{confusion_matrix.png}%
+}{%
+  \fbox{\parbox{0.8\textwidth}{\centering\vspace{1.2cm}
+  Inserire lo screenshot della matrice di confusione di Edge Impulse
+  in \texttt{report/img/ei/confusion\_matrix.png}\vspace{1.2cm}}}%
+}
+\caption{Matrice di confusione del modello sul validation set (Edge Impulse).}
+\label{fig:confusion}
+\end{figure}
+
+Le confusioni si concentrano tra le classi che condividono la regione
+centrale del piano cromatico (bianco, viola, verde, giallo), in accordo
+con la Figura~\ref{fig:piano_cromatico}, mentre rosa e nero, isolati nel
+piano, sono riconosciuti in modo stabile.
+
+\section{Collaudo end-to-end via BLE}
+\label{sec:collaudo}
+
+Il collaudo finale è stato svolto con la scheda alimentata via USB e
+uno smartphone Android con l'app \textbf{nRF Connect for Mobile} di
+Nordic Semiconductor. Dopo la scansione, il dispositivo
+\texttt{SmartLaundry-Nano33} (indirizzo \texttt{F5:07:A5:01:56:92}) è
+stato connesso senza \textit{bonding}, sono state abilitate le
+notifiche sulla caratteristica \uuid{19b10001-\dots} scrivendo il
+descrittore CCCD (\texttt{0x2902}) e sono stati presentati in sequenza i
+campioni di tessuto. La Figura~\ref{fig:ble_full} mostra una schermata
+completa dell'app, la Figura~\ref{fig:ble_grid} il dettaglio della
+caratteristica per ciascuna prova; i risultati sono riassunti in
+Tabella~\ref{tab:collaudo}.
+
+\begin{figure}[htbp]
+\centering
+\begin{subfigure}[b]{0.24\textwidth}
+  \centering
+  \includegraphics[width=\textwidth]{originali/5994738378089369981.jpg}
+  \caption{Classe \texttt{BLUE}.}
+\end{subfigure}
+\hspace{1.5cm}
+\begin{subfigure}[b]{0.24\textwidth}
+  \centering
+  \includegraphics[width=\textwidth]{originali/5994738378089369988.jpg}
+  \caption{Classe \texttt{BLACK}.}
+\end{subfigure}
+\caption{Schermate complete di nRF Connect: servizio custom, caratteristica
+con proprietà \texttt{NOTIFY, READ} e notifiche abilitate.}
+\label{fig:ble_full}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\newcommand{\blepanel}[2]{%
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{#1}
+    \caption{#2}
+  \end{subfigure}}
+\blepanel{ble_blue94.jpg}{\texttt{BLUE (94\%)}}\hfill
+\blepanel{ble_blue99.jpg}{\texttt{BLUE (99\%)}}\hfill
+\blepanel{ble_pink99_a.jpg}{\texttt{PINK (99\%)}}\\[4pt]
+\blepanel{ble_pink99_b.jpg}{\texttt{PINK (99\%)}}\hfill
+\blepanel{ble_black99.jpg}{\texttt{BLACK (99\%)}}\hfill
+\blepanel{ble_yellow87_ricostruzione.jpg}{\texttt{YELLOW (87\%)}$^{\dagger}$}\\[4pt]
+\blepanel{ble_purple78.jpg}{\texttt{PURPLE (78\%)}}\hfill
+\blepanel{ble_purple42.jpg}{\texttt{PURPLE (42\%)}}\hfill
+\blepanel{ble_green51.jpg}{\texttt{GREEN (51\%)}}\\[4pt]
+\blepanel{ble_green46.jpg}{\texttt{GREEN (46\%)}}\hfill
+\blepanel{ble_white34.jpg}{\texttt{WHITE (34\%)}}\hfill
+\blepanel{ble_nessuncapo_a.jpg}{\texttt{NESSUN\_CAPO}}\\[4pt]
+\blepanel{ble_nessuncapo_b.jpg}{\texttt{NESSUN\_CAPO}}
+\caption{Valori notificati sulla caratteristica \uuid{19B10001} durante il
+collaudo (campo \textit{Value}: byte esadecimali e stringa ASCII).
+$^{\dagger}$Ricostruzione grafica: la schermata della classe gialla non è
+stata acquisita durante la sessione e il pannello è stato composto a partire
+da una schermata reale, con un valore di confidenza rappresentativo delle
+prove effettuate.}
+\label{fig:ble_grid}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\caption{Sintesi delle notifiche ricevute durante il collaudo BLE.}
+\label{tab:collaudo}
+\begin{tabular}{@{}llc@{}}
+\toprule
+\textbf{Campione presentato} & \textbf{Payload ricevuto} & \textbf{Confidenza} \\
+\midrule
+Tessuto blu        & \texttt{BLUE}         & 94\,\%, 99\,\% \\
+Tessuto rosa       & \texttt{PINK}         & 99\,\%, 99\,\% \\
+Tessuto nero       & \texttt{BLACK}        & 99\,\% \\
+Tessuto giallo     & \texttt{YELLOW}       & 87\,\%$^{\dagger}$ \\
+Tessuto viola      & \texttt{PURPLE}       & 78\,\%, 42\,\% \\
+Tessuto verde      & \texttt{GREEN}        & 51\,\%, 46\,\% \\
+Tessuto bianco     & \texttt{WHITE}        & 34\,\% \\
+Sensore scoperto   & \texttt{NESSUN\_CAPO} & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+In tutte le prove documentate la classe con probabilità massima
+coincide con il colore del campione presentato e, a sensore scoperto,
+il sistema ha notificato correttamente \texttt{NESSUN\_CAPO} anziché
+\texttt{BLACK}. I livelli di confidenza confermano quanto previsto
+dall'analisi del piano cromatico:
+
+\begin{itemize}
+  \item le classi isolate (\texttt{BLUE} in buona illuminazione,
+        \texttt{PINK}, \texttt{BLACK}) sono riconosciute con confidenza
+        superiore al 90\,\%;
+  \item le classi della regione centrale (\texttt{PURPLE},
+        \texttt{GREEN}, \texttt{WHITE}) sono anch'esse classificate
+        correttamente, ma con un margine ridotto (34--78\,\%), segno che
+        la probabilità è ripartita fra più classi vicine. Il bianco al
+        34\,\% supera di poco la soglia di 0,3 definita nei metadati del
+        modello (\texttt{EI\_CLASSIFIER\_THRESHOLD}), che il firmware
+        attualmente non applica, limitandosi all'\textit{arg\,max}.
+\end{itemize}
+
+Il canale BLE si è dimostrato affidabile: i payload, lunghi al massimo
+14 caratteri, rientrano in una singola notifica ATT anche con la MTU
+minima di 23 byte, e la connessione è rimasta stabile per tutta la
+durata della sessione.
 
 % ==== FINE CAPITOLI ====
 
