@@ -1,4 +1,4 @@
-\documentclass[12pt,a4paper,twoside,openany]{report}
+\documentclass[11pt,a4paper,twoside,openany]{report}
 
 % ----------------------------
 % Pacchetti
@@ -44,16 +44,18 @@
 % ----------------------------
 % Margini e spaziatura
 % ----------------------------
-\geometry{a4paper, top=3cm, bottom=3cm, left=3.5cm, right=3cm}
-\onehalfspacing
+\geometry{a4paper, top=2.5cm, bottom=2.5cm, left=2.7cm, right=2.5cm}
+\setstretch{1.05}
+\setlist{itemsep=2pt, topsep=4pt}
 \setlength{\parindent}{1.5em}
 \setlength{\parskip}{0pt}
 
 % ----------------------------
 % Stile capitoli e paragrafi
 % ----------------------------
+\titleclass{\chapter}{straight}
 \titleformat{\chapter}[block]{\normalfont\LARGE\bfseries}{\thechapter.}{1em}{}
-\titlespacing*{\chapter}{0pt}{20pt}{15pt}
+\titlespacing*{\chapter}{0pt}{26pt}{12pt}
 \renewcommand{\thechapter}{\arabic{chapter}}
 \titleformat{\section}{\normalfont\large\bfseries}{\thesection}{1em}{}
 \titlespacing*{\section}{0pt}{18pt}{6pt}
@@ -203,9 +205,6 @@
     {Anno Accademico 2026/2027}
 \end{titlepage}
 
-\newpage
-\thispagestyle{empty}
-\mbox{}
 \pagenumbering{arabic}
 
 \thispagestyle{fancy}
@@ -310,7 +309,7 @@ SoC \textbf{Nordic Semiconductor nRF52840}~\cite{nrf52840}. Le
 caratteristiche rilevanti per il progetto sono riassunte in
 Tabella~\ref{tab:nano33}.
 
-\begin{table}[H]
+\begin{table}[htbp]
 \centering
 \caption{Specifiche principali della Arduino Nano 33 BLE Sense.}
 \label{tab:nano33}
@@ -347,7 +346,7 @@ emettitore IR. Comunica tramite I\textsuperscript{2}C all'indirizzo
 fisso \texttt{0x39} (registro ID atteso: \texttt{0xAB}, verificato dal
 firmware in fase di diagnostica).
 
-\begin{figure}[H]
+\begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[
   node distance=0.6cm and 1.0cm,
@@ -425,6 +424,439 @@ adatto a discriminare la presenza fisica di un capo indipendentemente
 dal suo colore: anche un tessuto nero riflette una frazione non nulla
 della radiazione nel vicino infrarosso.
 
+% ============================================================
+\chapter{Pipeline software e TinyML}
+\label{ch:software}
+
+\section{Normalizzazione cromatica}
+\label{sec:normalizzazione}
+
+Dall'Equazione~\eqref{eq:fotocorrente} si osserva che, se la sorgente
+luminosa varia soltanto in intensità, ovvero $E(\lambda) \rightarrow
+k\,E(\lambda)$, tutti i canali vengono moltiplicati per lo stesso fattore
+$k$. Il rapporto tra un canale e la somma dei tre canali cromatici è
+quindi indipendente da $k$. Su questo principio si basano le
+\textbf{coordinate cromatiche normalizzate}, calcolate a partire dai
+conteggi grezzi $R$, $G$, $B$ forniti dall'APDS-9960:
+\begin{equation}
+  \rn = \frac{R}{R+G+B}, \qquad
+  \gn = \frac{G}{R+G+B}, \qquad
+  \bn = \frac{B}{R+G+B}.
+  \label{eq:norm}
+\end{equation}
+
+Per costruzione vale $\rn + \gn + \bn = 1$: le tre feature giacciono su
+un piano (simplesso cromatico) e i gradi di libertà effettivi sono due.
+L'informazione sulla luminosità complessiva, che varia con
+l'illuminazione, viene scartata, mentre si conserva la
+\textit{cromaticità}, legata alla riflettanza spettrale $\rho(\lambda)$
+del tessuto. Il canale \textit{Clear} non entra nelle feature ma viene
+registrato nelle misure come indicatore del livello di segnale.
+
+Il caso degenere $R+G+B = 0$, che si presenta con tessuti neri o in
+completa oscurità, è gestito ponendo il denominatore pari a 1: il punto
+risultante $(0,0,0)$ si trova fuori dal simplesso ed è quindi
+facilmente riconoscibile dal classificatore, ma è \emph{identico} per un
+capo nero e per l'assenza di capi. Questo aspetto è ripreso nella
+Sezione~\ref{sec:nero_vuoto}.
+
+\section{Architettura del firmware}
+
+Il firmware (\texttt{firmware/SmartLaundry/SmartLaundry.ino}) è scritto
+in C++ per l'ambiente Arduino e si appoggia a tre librerie principali,
+riassunte in Tabella~\ref{tab:librerie}.
+
+\begin{table}[htbp]
+\centering
+\caption{Librerie software utilizzate nel firmware.}
+\label{tab:librerie}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{4.3cm}X@{}}
+\toprule
+\textbf{Libreria} & \textbf{Ruolo} \\
+\midrule
+\texttt{Arduino\_APDS9960} & Inizializzazione del sensore, lettura dei
+  canali RGBC (\texttt{readColor}) e della prossimità
+  (\texttt{readProximity}) via I\textsuperscript{2}C. \\
+\texttt{Smart-Laundry-Color-}\newline\texttt{Classifier\_inferencing} & Libreria C++
+  generata da Edge Impulse: blocco DSP, rete neurale compilata con EON
+  Compiler e funzione \texttt{run\_classifier()}. \\
+\texttt{ArduinoBLE} & Gestione del ruolo \textit{peripheral} BLE:
+  advertising, servizio GATT custom e notifiche. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Modello TinyML con Edge Impulse}
+
+L'addestramento è stato svolto sulla piattaforma Edge
+Impulse~\cite{edgeimpulse}. Per ogni classe sono stati acquisiti
+campioni delle tre coordinate normalizzate tramite porta seriale, nelle
+diverse condizioni di illuminazione descritte nel
+Capitolo~\ref{ch:analisi}. L'\textit{impulse} è composto da:
+
+\begin{toollist}
+  \item[Ingresso]
+        Finestra di un singolo campione a tre assi
+        ($\rn$, $\gn$, $\bn$), frequenza nominale \SI{10}{Hz}.
+  \item[Blocco di elaborazione \textit{Flatten}]
+        Calcola la media di ciascun asse sulla finestra (unica
+        statistica abilitata, scala 1,0), producendo un vettore di 3
+        feature.
+  \item[Blocco di apprendimento \textit{Classification}]
+        Rete neurale densa con un livello nascosto da 16 neuroni ReLU e
+        uno strato di uscita da 8 neuroni con attivazione
+        \textit{softmax}, per un totale di
+        $(3 \cdot 16 + 16) + (16 \cdot 8 + 8) = 200$ parametri.
+\end{toollist}
+
+Il modello è stato esportato come libreria Arduino utilizzando l'\textbf{EON
+Compiler}, che, invece di includere un interprete TensorFlow Lite
+generico, genera direttamente codice C++ contenente il grafo, i pesi
+come array costanti in Flash e un'allocazione statica dei tensori.
+È stata scelta la variante \textbf{non ottimizzata (float32)}: data la
+dimensione ridottissima della rete (\SI{800}{B} di pesi), la
+quantizzazione \texttt{int8} non avrebbe portato benefici apprezzabili
+in memoria, mentre avrebbe introdotto errori di quantizzazione su
+feature già fortemente discretizzate (Sezione~\ref{sec:illuminazione}).
+L'arena dei tensori generata dal compilatore occupa soltanto
+\SI{336}{B} di RAM.
+
+\begin{lstlisting}[caption={Normalizzazione cromatica e inferenza (estratto da \texttt{loop()}).}, label={lst:inferenza}]
+int r_raw, g_raw, b_raw, c_raw;
+APDS.readColor(r_raw, g_raw, b_raw, c_raw);
+
+// Normalizzazione delle coordinate (r_norm, g_norm, b_norm)
+float sum = (float)(r_raw + g_raw + b_raw);
+if (sum == 0.0f) sum = 1.0f;
+
+float r_norm = (float)r_raw / sum;
+float g_norm = (float)g_raw / sum;
+float b_norm = (float)b_raw / sum;
+
+for (size_t ix = 0; ix < EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE; ix += 3) {
+    features[ix + 0] = r_norm;
+    features[ix + 1] = g_norm;
+    features[ix + 2] = b_norm;
+}
+
+signal_t features_signal;
+features_signal.total_length = EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE;
+features_signal.get_data = &raw_feature_get_data;
+
+ei_impulse_result_t result = { 0 };
+EI_IMPULSE_ERROR res = run_classifier(&features_signal, &result, false);
+\end{lstlisting}
+
+Al termine dell'inferenza il firmware individua la classe con
+probabilità massima (\textit{arg\,max} sull'uscita softmax) e costruisce
+il payload testuale nel formato \texttt{"CLASSE (NN\%)"}, ad esempio
+\texttt{"BLUE (94\%)"}.
+
+\subsection{Stack Bluetooth Low Energy}
+
+La scheda opera come \textit{peripheral} GATT con nome
+\texttt{SmartLaundry-Nano33}. È stato definito un servizio custom
+contenente un'unica caratteristica di tipo stringa (massimo 64 byte) con
+proprietà \texttt{READ} e \texttt{NOTIFY}, così che lo smartphone riceva
+automaticamente ogni nuovo risultato senza effettuare
+\textit{polling}.
+
+\begin{table}[htbp]
+\centering
+\caption{Profilo GATT esposto dal dispositivo.}
+\label{tab:gatt}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Elemento} & \textbf{UUID} & \textbf{Proprietà} \\
+\midrule
+Servizio        & \uuid{19B10000-E8F2-537E-4F6C-D104768A1214} & Primary \\
+Caratteristica  & \uuid{19B10001-E8F2-537E-4F6C-D104768A1214} & Read, Notify \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[caption={Definizione del servizio GATT e avvio dell'advertising.}, label={lst:ble}]
+BLEService laundryService("19B10000-E8F2-537E-4F6C-D104768A1214");
+BLEStringCharacteristic colorResultChar(
+    "19B10001-E8F2-537E-4F6C-D104768A1214", BLERead | BLENotify, 64);
+
+BLE.setLocalName("SmartLaundry-Nano33");
+BLE.setAdvertisedService(laundryService);
+laundryService.addCharacteristic(colorResultChar);
+BLE.addService(laundryService);
+BLE.advertise();
+\end{lstlisting}
+
+I payload possibili sono il nome di una delle otto classi seguito dalla
+confidenza percentuale, oppure il messaggio di stato
+\texttt{NESSUN\_CAPO} generato dal Proximity Gate.
+
+\section{Macchina a stati a due stadi}
+\label{sec:fsm}
+
+Il comportamento del firmware è descritto dalla macchina a stati di
+Figura~\ref{fig:fsm}. Dopo l'inizializzazione, in cui il sensore viene
+avviato con un massimo di cinque tentativi e, in caso di fallimento,
+viene eseguita una scansione diagnostica del bus I\textsuperscript{2}C,
+il ciclo principale (periodo di circa \SI{500}{ms}) è articolato in due
+stadi:
+
+\begin{enumerate}
+  \item \textbf{Proximity Gate}: viene letto il valore di prossimità IR.
+        Se nessun oggetto si trova entro circa 2--3\,cm dal sensore, il
+        sistema resta in \textit{standby}, invia la notifica
+        \texttt{NESSUN\_CAPO} e non esegue alcuna classificazione;
+  \item \textbf{Classificazione TinyML}: solo se il capo è presente si
+        acquisiscono i canali RGBC, si calcolano le coordinate
+        normalizzate, si esegue l'inferenza e si notifica il risultato.
+\end{enumerate}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  node distance=0.9cm and 1.3cm,
+  st/.style={draw, rounded corners, fill=ucbg, minimum width=2.7cm, minimum height=1cm, align=center, font=\small},
+  dec/.style={draw, diamond, aspect=2, fill=white, align=center, font=\small, inner sep=1pt},
+  arr/.style={-{Stealth[length=2.5mm]}, thick}
+]
+  \node[st] (init) {INIT\\APDS + BLE};
+  \node[dec, below=of init] (gate) {Capo\\presente?};
+  \node[st, right=1.6cm of gate] (idle) {STANDBY\\notifica\\\texttt{NESSUN\_CAPO}};
+  \node[st, below=of gate] (acq) {ACQUISIZIONE\\RGBC + norm.};
+  \node[st, below=of acq] (inf) {INFERENZA\\EON (float32)};
+  \node[st, right=1.6cm of inf] (notify) {NOTIFICA BLE\\\texttt{CLASSE (NN\%)}};
+  \node[draw, dashed, rounded corners, left=1.2cm of acq, align=center, font=\footnotesize] (wait) {attesa\\\SI{500}{ms}};
+  \draw[arr] (init) -- (gate);
+  \draw[arr] (gate) -- node[above, font=\footnotesize]{no} (idle);
+  \draw[arr] (gate) -- node[right, font=\footnotesize]{sì} (acq);
+  \draw[arr] (acq) -- (inf);
+  \draw[arr] (inf) -- (notify);
+  \draw[arr] (idle.north) |- ++(0,0.6) -| (wait.north);
+  \draw[arr] (notify.south) |- ++(0,-0.6) -| (wait.south);
+  \draw[arr] (wait.east) -- ++(0.4,0) |- (gate.west);
+\end{tikzpicture}
+\caption{Macchina a stati del firmware: Proximity Gate seguito dalla classificazione.}
+\label{fig:fsm}
+\end{figure}
+
+La scelta di porre il gate \emph{prima} dell'acquisizione cromatica ha
+un duplice vantaggio: elimina alla radice la classificazione di
+\enquote{capi fantasma} quando il sensore è scoperto e, in un'ottica di
+prodotto alimentato a batteria, consente di evitare l'esecuzione della
+rete neurale e la trasmissione di risultati privi di significato.
+
+% ============================================================
+\chapter{Analisi sperimentale e discussione delle criticità}
+\label{ch:analisi}
+
+\section{Metodologia di misura}
+
+Per caratterizzare il comportamento del sensore è stato sviluppato uno
+sketch di acquisizione che stampa su porta seriale, in formato CSV, i
+conteggi grezzi $R$, $G$, $B$, $C$ e le coordinate normalizzate
+dell'Equazione~\eqref{eq:norm}. Per ciascuno degli otto colori è stato
+utilizzato un campione di tessuto appoggiato sulla finestra ottica
+dell'APDS-9960, acquisendo da 9 a 14 letture consecutive in tre
+condizioni di illuminazione:
+
+\begin{itemize}
+  \item \textbf{Luce diretta}: tessuto illuminato da una torcia/lampada
+        puntata sul campione;
+  \item \textbf{Luce ambiente}: normale illuminazione interna del
+        laboratorio;
+  \item \textbf{Ombra}: sensore e campione schermati dalla luce
+        diretta.
+\end{itemize}
+
+I file grezzi (\texttt{report/data/<COLORE>\_<condizione>.txt}) sono
+inclusi nel repository. La Tabella~\ref{tab:misure} riassume, per ogni
+combinazione, il numero di letture $n$, la media del canale
+\textit{Clear} $\bar{C}$, le medie delle tre coordinate normalizzate e la
+deviazione standard campionaria $\sigma_r$ di $\rn$.
+
+\begin{table}[htbp]
+\centering
+\caption{Statistiche delle letture per colore e condizione di illuminazione.}
+\label{tab:misure}
+\small
+\begin{tabular}{@{}llrrcccc@{}}
+\toprule
+\textbf{Colore} & \textbf{Condizione} & $n$ & $\bar{C}$ & $\bar{r}_{\mathrm{norm}}$ & $\bar{g}_{\mathrm{norm}}$ & $\bar{b}_{\mathrm{norm}}$ & $\sigma_r$ \\
+\midrule
+\multirow{3}{*}{Nero}   & Luce diretta  & 10 & 0,7  & 0,000 & 0,000 & 0,000 & 0,000 \\
+                        & Luce ambiente & 10 & 0,5  & 0,000 & 0,000 & 0,000 & 0,000 \\
+                        & Ombra         & 10 & 0,0  & 0,000 & 0,000 & 0,000 & 0,000 \\
+\midrule
+\multirow{3}{*}{Bianco} & Luce diretta  & 10 & 25,3 & 0,530 & 0,258 & 0,212 & 0,009 \\
+                        & Luce ambiente & 11 & 3,3  & 0,539 & 0,261 & 0,200 & 0,070 \\
+                        & Ombra         & 12 & 4,2  & 0,531 & 0,240 & 0,229 & 0,046 \\
+\midrule
+\multirow{3}{*}{Rosso}  & Luce diretta  & 9  & 3,8  & 0,596 & 0,280 & 0,123 & 0,067 \\
+                        & Luce ambiente & 11 & 17,4 & 0,546 & 0,265 & 0,189 & 0,008 \\
+                        & Ombra         & 12 & 1,8  & 0,611 & 0,389 & 0,000 & 0,148 \\
+\midrule
+\multirow{3}{*}{Blu}    & Luce diretta  & 10 & 2,7  & 0,366 & 0,316 & 0,316 & 0,070 \\
+                        & Luce ambiente & 11 & 3,9  & 0,609 & 0,286 & 0,105 & 0,075 \\
+                        & Ombra         & 12 & 6,9  & 0,570 & 0,234 & 0,196 & 0,044 \\
+\midrule
+\multirow{3}{*}{Verde}  & Luce diretta  & 12 & 27,8 & 0,431 & 0,309 & 0,260 & 0,045 \\
+                        & Luce ambiente & 11 & 12,5 & 0,469 & 0,291 & 0,240 & 0,066 \\
+                        & Ombra         & 11 & 13,0 & 0,478 & 0,267 & 0,255 & 0,029 \\
+\midrule
+\multirow{3}{*}{Rosa}   & Luce diretta  & 14 & 8,0  & 0,725 & 0,123 & 0,152 & 0,087 \\
+                        & Luce ambiente & 11 & 2,3  & 0,964 & 0,018 & 0,018 & 0,121 \\
+                        & Ombra         & 11 & 2,6  & 0,927 & 0,036 & 0,036 & 0,162 \\
+\midrule
+\multirow{3}{*}{Viola}  & Luce diretta  & 13 & 8,0  & 0,524 & 0,296 & 0,181 & 0,096 \\
+                        & Luce ambiente & 11 & 3,9  & 0,463 & 0,278 & 0,260 & 0,057 \\
+                        & Ombra$^{*}$   & 11 & 3,9  & 0,463 & 0,278 & 0,260 & 0,057 \\
+\midrule
+\multirow{3}{*}{Giallo} & Luce diretta  & 11 & 5,2  & 0,592 & 0,281 & 0,127 & 0,062 \\
+                        & Luce ambiente & 10 & 4,0  & 0,600 & 0,233 & 0,167 & 0,061 \\
+                        & Ombra         & 10 & 4,4  & 0,583 & 0,225 & 0,192 & 0,063 \\
+\bottomrule
+\multicolumn{8}{@{}l}{\footnotesize $^{*}$ Serie identica a quella in luce ambiente: verosimile duplicazione in fase di salvataggio.}
+\end{tabular}
+\end{table}
+
+\section{Stabilità delle letture al variare dell'illuminazione}
+\label{sec:illuminazione}
+
+\subsection{Efficacia della normalizzazione}
+
+Il campione bianco costituisce il caso più chiaro: passando dalla luce
+diretta alla luce ambiente il canale \textit{Clear} si riduce di quasi
+un fattore 8 (da 25,3 a 3,3 conteggi), mentre $\bar{r}_{\mathrm{norm}}$
+varia di meno di 0,01 (0,530 contro 0,539) e le altre due coordinate di
+circa 0,02. Un comportamento analogo si osserva per il verde (variazione
+di $\bar{C}$ superiore a un fattore 2, scostamento massimo di
+$\bar{r}_{\mathrm{norm}}$ pari a 0,047) e per il giallo (scostamento
+massimo 0,017). La normalizzazione rende quindi le feature largamente
+indipendenti dall'intensità della luce, come previsto
+dalla Sezione~\ref{sec:normalizzazione}.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=\textwidth, height=7cm,
+  xlabel={$\bar{r}_{\mathrm{norm}}$}, ylabel={$\bar{g}_{\mathrm{norm}}$},
+  xmin=0.33, xmax=1.0, ymin=0, ymax=0.42,
+  grid=major, grid style={gray!25},
+  legend style={font=\scriptsize, at={(0.98,0.98)}, anchor=north east, cells={anchor=west}},
+  legend columns=2,
+  every axis plot/.append style={only marks, mark size=2.6pt, thick},
+  x tick label style={/pgf/number format/use comma}, y tick label style={/pgf/number format/use comma},
+]
+\addplot[mark=o, color=black!55]          coordinates {(0.530,0.258) (0.539,0.261) (0.531,0.240)};
+\addlegendentry{Bianco}
+\addplot[mark=square*, color=red!80!black] coordinates {(0.596,0.280) (0.546,0.265) (0.611,0.389)};
+\addlegendentry{Rosso}
+\addplot[mark=triangle*, color=blue!80]   coordinates {(0.366,0.316) (0.609,0.286) (0.570,0.234)};
+\addlegendentry{Blu}
+\addplot[mark=diamond*, color=green!55!black] coordinates {(0.431,0.309) (0.469,0.291) (0.478,0.267)};
+\addlegendentry{Verde}
+\addplot[mark=pentagon*, color=magenta!70] coordinates {(0.725,0.123) (0.964,0.018) (0.927,0.036)};
+\addlegendentry{Rosa}
+\addplot[mark=*, color=violet]            coordinates {(0.524,0.296) (0.463,0.278)};
+\addlegendentry{Viola}
+\addplot[mark=star, color=orange!90!black, mark size=3.2pt] coordinates {(0.592,0.281) (0.600,0.233) (0.583,0.225)};
+\addlegendentry{Giallo}
+\end{axis}
+\end{tikzpicture}
+\caption{Medie delle coordinate cromatiche nel piano $(\rn, \gn)$ per le tre
+condizioni di illuminazione. Il nero, sempre in $(0,0)$, è fuori scala.}
+\label{fig:piano_cromatico}
+\end{figure}
+
+\subsection{Limiti osservati: segnale basso e quantizzazione}
+
+L'analisi della Tabella~\ref{tab:misure} e della
+Figura~\ref{fig:piano_cromatico} evidenzia però anche alcune criticità
+fisiche che è importante discutere.
+
+\begin{toollist}
+  \item[Conteggi molto bassi]
+        Con il tessuto appoggiato sulla finestra ottica, il campione
+        stesso scherma gran parte della luce ambiente e, non essendoci
+        un illuminatore nel visibile, il segnale che raggiunge i
+        fotodiodi è minimo. Con la configurazione della libreria
+        (\SI{8.3}{ms}, guadagno $16\times$, fondo scala 3075 conteggi),
+        $\bar{C}$ non supera 28 conteggi, cioè meno dell'1\,\% della
+        dinamica disponibile.
+  \item[Quantizzazione delle feature]
+        Con somme $R+G+B$ dell'ordine di 3--5 conteggi, le coordinate
+        normalizzate possono assumere soltanto pochi valori discreti
+        (0,250; 0,333; 0,500; 0,600; 0,667\,\dots), come si vede
+        chiaramente nei file grezzi. La risoluzione di $\rn$ è dunque
+        dell'ordine di $1/(R+G+B) \approx 0{,}2$--$0{,}3$, e una singola
+        unità di rumore sul canale blu sposta il punto di molti
+        centesimi. Le serie con $\bar{C}$ elevato (bianco in luce
+        diretta, rosso in luce ambiente) mostrano infatti $\sigma_r <
+        0{,}01$, mentre quelle a basso segnale arrivano a
+        $\sigma_r \approx 0{,}15$.
+  \item[Sbilanciamento verso il rosso]
+        Anche il bianco presenta $\rn \approx 0{,}53$ anziché il valore
+        ideale $1/3$. Ciò è dovuto alla combinazione della
+        responsività spettrale dei fotodiodi, maggiore alle lunghezze
+        d'onda lunghe, e dello spettro \enquote{caldo} delle sorgenti
+        utilizzate. Lo sbilanciamento è sistematico e quindi viene
+        appreso dal classificatore, ma riduce la distanza tra le classi.
+  \item[Classi sovrapposte]
+        Bianco, viola, verde, giallo e rosso occupano una regione
+        compatta del piano cromatico ($\rn \in [0{,}43;\,0{,}61]$,
+        $\gn \in [0{,}22;\,0{,}31]$). Il blu in particolare è ben
+        distinto solo in luce diretta ($\rn = 0{,}366$), mentre in luce
+        ambiente e in ombra si avvicina al giallo. Al contrario rosa e
+        nero sono separati nettamente da tutte le altre classi.
+\end{toollist}
+
+Queste osservazioni giustificano la scelta di un classificatore non
+lineare addestrato su dati raccolti in tutte le condizioni di
+illuminazione, anziché di semplici soglie, e anticipano i risultati
+della Sezione~\ref{sec:collaudo}: confidenze elevate per le classi
+isolate e confidenze più basse per quelle che condividono la regione
+centrale del piano cromatico.
+
+\section{Ambiguità \enquote{nero contro vuoto} e Proximity Gate}
+\label{sec:nero_vuoto}
+
+Le misure sul campione nero mostrano $R = G = B = 0$ in tutte le
+letture e in tutte le condizioni di illuminazione: il tessuto nero
+opaco assorbe pressoché tutta la radiazione visibile e le coordinate
+normalizzate collassano nel punto $(0,0,0)$. La stessa lettura si
+ottiene però quando davanti al sensore non c'è alcun oggetto e la scena
+è poco illuminata (per esempio all'interno del cestello). Dal punto di
+vista del classificatore cromatico, quindi, \enquote{nero} e
+\enquote{nessun capo} sono la stessa classe: senza un'informazione
+aggiuntiva il sistema notificherebbe continuamente \texttt{BLACK} a
+sensore scoperto.
+
+\begin{ucbox}
+\textbf{Soluzione adottata.} L'informazione mancante è fornita dal
+canale di prossimità IR dello stesso APDS-9960. Il LED a \SI{950}{nm}
+illumina attivamente la scena e la quantità di radiazione riflessa
+dipende principalmente dalla \emph{distanza} della superficie, non dal
+suo colore nel visibile: un tessuto nero appoggiato al sensore produce
+un valore \texttt{PDATA} elevato, mentre l'aria non restituisce alcun
+eco. Il firmware considera presente un capo soltanto quando
+\texttt{PDATA} supera una soglia corrispondente a circa 2--3\,cm; in
+caso contrario resta in standby e notifica \texttt{NESSUN\_CAPO}.
+\end{ucbox}
+
+La soglia è stata fissata sperimentalmente osservando il valore di
+prossimità stampato ogni \SI{2}{s} sulla porta seriale nel messaggio
+di stato del firmware, mentre si avvicinavano progressivamente i
+campioni. Va notato che la
+libreria \texttt{Arduino\_APDS9960} restituisce da
+\texttt{readProximity()} il valore complementare $255 -
+\texttt{PDATA}$, crescente con la distanza; il confronto con la soglia
+deve quindi essere impostato tenendo conto di questa inversione di
+scala. Il gate a due stadi (Figura~\ref{fig:fsm}) separa così in modo
+netto i due casi: i falsi positivi \texttt{BLACK} a sensore scoperto
+vengono eliminati, come confermato dal collaudo BLE
+(Sezione~\ref{sec:collaudo}).
+
 % ==== FINE CAPITOLI ====
 
 % ============================================================
@@ -439,6 +871,16 @@ Nordic Semiconductor,
 Broadcom (Avago Technologies),
 \textit{APDS-9960 Digital Proximity, Ambient Light, RGB and Gesture
 Sensor -- Data Sheet}, AV02-4191EN, 2015.
+
+\bibitem{edgeimpulse}
+S.~Hymel \textit{et al.},
+\textit{Edge Impulse: An MLOps Platform for Tiny Machine Learning},
+Proceedings of Machine Learning and Systems (MLSys), 2023.
+
+\bibitem{arduinoapds}
+Arduino,
+\textit{Arduino\_APDS9960 Library},
+\url{https://github.com/arduino-libraries/Arduino_APDS9960}.
 
 \end{thebibliography}
 
