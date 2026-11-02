@@ -1,0 +1,445 @@
+\documentclass[12pt,a4paper,twoside,openany]{report}
+
+% ----------------------------
+% Pacchetti
+% ----------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[italian]{babel}
+\usepackage{lmodern}
+\usepackage{setspace}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{tocloft}
+\usepackage{csquotes}
+\usepackage{graphicx}
+\graphicspath{
+  {./img/}
+  {./img/ble/}
+  {./img/ei/}
+}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{siunitx}
+\sisetup{output-decimal-marker={,}, group-separator={\,}, group-minimum-digits=4}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{mdframed}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, fit, calc}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+\usepackage{hyperref}
+\usepackage[all]{hypcap}
+
+% ----------------------------
+% Margini e spaziatura
+% ----------------------------
+\geometry{a4paper, top=3cm, bottom=3cm, left=3.5cm, right=3cm}
+\onehalfspacing
+\setlength{\parindent}{1.5em}
+\setlength{\parskip}{0pt}
+
+% ----------------------------
+% Stile capitoli e paragrafi
+% ----------------------------
+\titleformat{\chapter}[block]{\normalfont\LARGE\bfseries}{\thechapter.}{1em}{}
+\titlespacing*{\chapter}{0pt}{20pt}{15pt}
+\renewcommand{\thechapter}{\arabic{chapter}}
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection}{1em}{}
+\titlespacing*{\section}{0pt}{18pt}{6pt}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection}{1em}{}
+\titlespacing*{\subsection}{0pt}{12pt}{4pt}
+\titleformat{\subsubsection}{\normalfont\normalsize\itshape}{\thesubsubsection}{1em}{}
+\titlespacing*{\subsubsection}{0pt}{8pt}{2pt}
+
+% ----------------------------
+% Numerazione pagine
+% ----------------------------
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead{}
+\fancyfoot[LE]{\thepage}
+\fancyfoot[RO]{\thepage}
+\fancyfoot[C]{}
+\fancypagestyle{plain}{%
+  \fancyhf{}
+  \fancyhead{}
+  \fancyfoot[LE]{\thepage}
+  \fancyfoot[RO]{\thepage}
+  \fancyfoot[C]{}
+}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% ----------------------------
+% Stile codice
+% ----------------------------
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    language=C++,
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    literate={à}{{\`a}}1 {è}{{\`e}}1 {é}{{\'e}}1 {ì}{{\`i}}1 {ò}{{\`o}}1 {ù}{{\`u}}1
+}
+\lstset{style=mystyle}
+\renewcommand{\lstlistingname}{Listato}
+\renewcommand{\lstlistlistingname}{Elenco dei listati}
+
+% ----------------------------
+% Indice nero
+% ----------------------------
+\hypersetup{
+  hidelinks,
+  pdftitle={Smart Laundry Color Classifier},
+  pdfauthor={Andrea Vaerini},
+}
+
+% ----------------------------
+% Riquadro per note e criticità
+% ----------------------------
+\definecolor{ucborder}{RGB}{60,90,150}
+\definecolor{ucbg}{RGB}{245,247,252}
+
+\newenvironment{ucbox}{%
+  \begin{mdframed}[
+    backgroundcolor=ucbg,
+    linecolor=ucborder,
+    linewidth=1pt,
+    innerleftmargin=10pt,
+    innerrightmargin=10pt,
+    innertopmargin=8pt,
+    innerbottommargin=8pt,
+    roundcorner=4pt
+  ]
+}{%
+  \end{mdframed}
+}
+
+% ----------------------------
+% Elenchi stilizzati
+% ----------------------------
+\newenvironment{toollist}{%
+  \begin{description}[
+    style=nextline,
+    leftmargin=0pt,
+    labelindent=0pt,
+    font=\normalfont\bfseries,
+    itemsep=6pt
+  ]
+}{%
+  \end{description}
+}
+
+% ----------------------------
+% Comandi di comodo
+% ----------------------------
+\newcommand{\rn}{r_{\mathrm{norm}}}
+\newcommand{\gn}{g_{\mathrm{norm}}}
+\newcommand{\bn}{b_{\mathrm{norm}}}
+\newcommand{\uuid}[1]{\texttt{\small #1}}
+
+% ============================================================
+\begin{document}
+
+% ----------------------------
+% Frontespizio
+% ----------------------------
+\begin{titlepage}
+\thispagestyle{empty}
+    \centering
+    \includegraphics[width=0.26\textwidth, height=3.5cm]{logo_uni.jpg}
+
+    {\Large UNIVERSITÀ DEGLI STUDI DI BERGAMO \\[0.3cm]}
+    {\large Scuola di Ingegneria \\[0.1cm]}
+    {\large Corso di Laurea in Ingegneria Informatica \\[1.5cm]}
+    {\large \textbf{LABORATORIO DI SENSORI} \\[1.5cm]}
+
+    {\LARGE\bfseries SMART LAUNDRY COLOR CLASSIFIER\\[0.5cm]}
+    {\large Sistema Embedded TinyML su Arduino Nano 33 BLE\\
+    per la Classificazione Cromatica e Notifica Wireless \\[2cm]}
+
+    \begin{minipage}[t]{0.45\textwidth}
+        \raggedright
+        \textbf{Candidato:} \\
+        Andrea Vaerini \textbf{~1067398}
+    \end{minipage}
+    \hfill
+    \begin{minipage}[t]{0.45\textwidth}
+       \raggedleft
+        \textbf{Docenti:} \\
+        Prof. Gianluca Traversi \\
+        Dott. Paolo Lazzaroni \\[0.5cm]
+    \end{minipage}
+
+    \vfill
+    {Anno Accademico 2026/2027}
+\end{titlepage}
+
+\newpage
+\thispagestyle{empty}
+\mbox{}
+\pagenumbering{arabic}
+
+\thispagestyle{fancy}
+\tableofcontents
+\listoffigures
+\listoftables
+\newpage
+
+% ============================================================
+\chapter{Introduzione e motivazione}
+\label{ch:intro}
+
+\section{Automazione nello \textit{Smart Laundry}}
+
+La separazione dei capi per colore prima del lavaggio è un'operazione
+quotidiana tanto banale quanto soggetta a errore: un singolo indumento
+rosso o blu inserito in un carico di bianchi è sufficiente a compromettere
+l'intero lavaggio per effetto del rilascio di coloranti (\textit{color
+bleeding}). Le lavatrici di fascia alta integrano già sensori di carico,
+di torbidità dell'acqua e di schiuma, ma il riconoscimento del colore dei
+capi resta affidato all'utente. Un sensore cromatico posto in prossimità
+dell'oblò, capace di avvisare l'utente direttamente sullo smartphone nel
+momento in cui inserisce un capo \enquote{incompatibile} con il programma
+selezionato, rappresenta un'estensione naturale del paradigma
+\textit{Smart Home}.
+
+\section{Limiti dei sensori cromatici tradizionali}
+
+I classificatori di colore più semplici confrontano le tre componenti
+$R$, $G$, $B$ fornite da un sensore con soglie fisse determinate
+empiricamente. Questo approccio presenta tre limiti principali:
+
+\begin{itemize}
+  \item \textbf{Dipendenza dall'illuminazione}: l'intensità assoluta
+        dei canali varia di un ordine di grandezza passando da luce
+        diretta a ombra, per cui una soglia tarata in una condizione non
+        è valida nelle altre;
+  \item \textbf{Confini di decisione non lineari}: colori come rosa,
+        viola e bianco occupano regioni dello spazio cromatico contigue
+        e di forma irregolare, difficili da separare con semplici
+        disuguaglianze;
+  \item \textbf{Ambiguità del nero}: un tessuto nero opaco e l'assenza
+        di qualunque oggetto davanti al sensore producono entrambi
+        letture prossime allo zero su tutti i canali e risultano quindi
+        indistinguibili sulla sola base dell'informazione cromatica.
+\end{itemize}
+
+Il progetto affronta il primo punto con una normalizzazione cromatica
+(Capitolo~\ref{ch:software}), il secondo sostituendo le soglie fisse con
+una piccola rete neurale addestrata (\textit{TinyML}) e il terzo con un
+\textit{Proximity Gate} basato sul sensore di prossimità a infrarossi
+integrato (Capitolo~\ref{ch:analisi}).
+
+\section{Requisiti del progetto}
+
+Il sistema sviluppato, denominato \textit{Smart Laundry Color
+Classifier}, deve soddisfare i seguenti requisiti:
+
+\begin{toollist}
+  \item[R1 -- Classificazione multi-classe]
+        Riconoscere otto classi cromatiche rappresentative dei capi
+        domestici: \texttt{BLACK}, \texttt{WHITE}, \texttt{RED},
+        \texttt{BLUE}, \texttt{GREEN}, \texttt{PINK}, \texttt{PURPLE},
+        \texttt{YELLOW}.
+  \item[R2 -- Robustezza all'illuminazione]
+        Fornire la stessa classificazione in luce diretta, in luce
+        ambiente e in ombra.
+  \item[R3 -- Rilevamento della presenza]
+        Distinguere un capo nero dall'assenza di capi, evitando falsi
+        positivi quando il sensore è scoperto.
+  \item[R4 -- Inferenza a bordo]
+        Eseguire l'intera elaborazione sul microcontrollore, senza
+        dipendere da servizi cloud.
+  \item[R5 -- Notifica wireless]
+        Inviare il risultato (classe e confidenza) a uno smartphone
+        tramite Bluetooth Low Energy.
+\end{toollist}
+
+\section{Sviluppo su singola scheda}
+
+Il progetto è stato svolto individualmente. Per contenere i tempi di
+sviluppo e massimizzare l'affidabilità meccanica del prototipo si è
+scelto di utilizzare esclusivamente la sensoristica già presente sulla
+scheda \textbf{Arduino Nano 33 BLE Sense}: il sensore di colore,
+prossimità e gesti APDS-9960 e il modulo radio BLE sono integrati sul PCB
+e collegati internamente al microcontrollore. Questa scelta elimina
+completamente cablaggi su breadboard, resistenze di pull-up esterne e
+problemi di contatti intermittenti, e consente di concentrare il lavoro
+sugli aspetti di elaborazione del segnale, di apprendimento automatico e
+di comunicazione. Il prototipo risultante è costituito da un unico
+modulo di \SI{45}{mm} $\times$ \SI{18}{mm} alimentato via USB.
+
+% ============================================================
+\chapter{Architettura hardware e sensoristica integrata}
+\label{ch:hardware}
+
+\section{Arduino Nano 33 BLE Sense}
+
+La Arduino Nano 33 BLE Sense è una scheda di sviluppo in formato
+\textit{Nano} costruita attorno al modulo u-blox NINA-B306, che ospita il
+SoC \textbf{Nordic Semiconductor nRF52840}~\cite{nrf52840}. Le
+caratteristiche rilevanti per il progetto sono riassunte in
+Tabella~\ref{tab:nano33}.
+
+\begin{table}[H]
+\centering
+\caption{Specifiche principali della Arduino Nano 33 BLE Sense.}
+\label{tab:nano33}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Caratteristica} & \textbf{Valore} \\
+\midrule
+SoC                     & Nordic nRF52840 \\
+CPU                     & ARM Cortex-M4F, \SI{64}{MHz}, FPU singola precisione \\
+Memoria Flash           & \SI{1}{MB} (\SI{983040}{B} disponibili per lo sketch) \\
+Memoria SRAM            & \SI{256}{kB} \\
+Radio                   & Bluetooth 5 / BLE, \SI{2.4}{GHz} \\
+Tensione di lavoro      & \SI{3.3}{V} (alimentazione USB \SI{5}{V}) \\
+Bus sensori             & I\textsuperscript{2}C interno (\texttt{Wire1}) \\
+Sensori integrati       & APDS-9960, IMU, microfono, temp./umidità, pressione \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La presenza dell'unità in virgola mobile (FPU) del Cortex-M4F è
+particolarmente importante: permette di eseguire sia la normalizzazione
+cromatica sia l'inferenza della rete neurale direttamente in
+\texttt{float32}, senza ricorrere alla quantizzazione a 8 bit e quindi
+senza perdita di precisione numerica. Il firmware è basato sul core
+\texttt{Arduino Mbed OS Nano Boards} (versione 1.1.6), che fornisce lo
+stack BLE Cordio utilizzato dalla libreria \texttt{ArduinoBLE}.
+
+\section{Il sensore Avago/Broadcom APDS-9960}
+
+L'APDS-9960~\cite{apds9960} è un sensore digitale che integra in un
+unico package ottico quattro funzioni: misura di luce ambiente e colore
+(ALS/RGBC), rilevamento di prossimità, riconoscimento di gesti e un
+emettitore IR. Comunica tramite I\textsuperscript{2}C all'indirizzo
+fisso \texttt{0x39} (registro ID atteso: \texttt{0xAB}, verificato dal
+firmware in fase di diagnostica).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=0.6cm and 1.0cm,
+  blk/.style={draw, rounded corners, minimum width=2.6cm, minimum height=0.9cm, align=center, font=\small},
+  sens/.style={blk, fill=ucbg},
+  arr/.style={-{Stealth[length=2.5mm]}, thick}
+]
+  \node[sens] (pd) {Fotodiodi\\RGBC + filtri};
+  \node[sens, below=of pd] (ir) {Fotodiodo IR\\(prossimità)};
+  \node[sens, below=of ir] (led) {LED IR\\\SI{950}{nm}};
+  \node[blk, right=of pd] (adc) {ADC 16 bit\\(ATIME, AGAIN)};
+  \node[blk, right=of ir] (padc) {ADC 8 bit\\(PDATA)};
+  \node[blk, right=1.6cm of $(adc)!0.5!(padc)$] (i2c) {Interfaccia\\I\textsuperscript{2}C \texttt{0x39}};
+  \node[blk, right=of i2c, fill=ucbg] (mcu) {nRF52840};
+  \node[draw, dashed, inner sep=6pt, fit=(pd)(led)(adc)(padc)(i2c), label={[font=\footnotesize]above:APDS-9960}] {};
+  \draw[arr] (pd) -- (adc);
+  \draw[arr] (ir) -- (padc);
+  \draw[arr] (adc) -- (i2c);
+  \draw[arr] (padc) -- (i2c);
+  \draw[arr] (i2c) -- (mcu);
+  \draw[arr, dashed] (led.east) -| node[pos=0.75, right, font=\footnotesize, align=left]{eco IR\\dal tessuto} (padc.south);
+\end{tikzpicture}
+\caption{Schema a blocchi funzionale dell'APDS-9960 e collegamento al SoC.}
+\label{fig:apds_block}
+\end{figure}
+
+\subsection{Canali RGBC}
+
+Il blocco colore è costituito da una matrice di fotodiodi ricoperti da
+filtri interferenziali rosso, verde e blu, più un canale
+\textit{Clear} senza filtro cromatico. Ciascun fotodiodo genera una
+fotocorrente proporzionale all'irradianza incidente pesata per la
+propria responsività spettrale $S_k(\lambda)$:
+\begin{equation}
+  I_k = \int_{\lambda} S_k(\lambda)\, E(\lambda)\, \rho(\lambda)\, d\lambda,
+  \qquad k \in \{R, G, B, C\}
+  \label{eq:fotocorrente}
+\end{equation}
+dove $E(\lambda)$ è la distribuzione spettrale della sorgente luminosa e
+$\rho(\lambda)$ la riflettanza del tessuto. Le fotocorrenti sono
+integrate da quattro ADC a doppia rampa da 16 bit. Due registri
+determinano la sensibilità:
+
+\begin{itemize}
+  \item \textbf{ATIME} (tempo di integrazione): ogni ciclo dura
+        \SI{2.78}{ms} e il valore massimo del conteggio vale
+        $1025 \cdot (256 - \mathrm{ATIME})$;
+  \item \textbf{AGAIN} (guadagno analogico): selezionabile tra
+        $1\times$, $4\times$, $16\times$ e $64\times$.
+\end{itemize}
+
+La libreria \texttt{Arduino\_APDS9960} imposta in fase di
+inizializzazione $\mathrm{ATIME} = 253$ (3 cicli, circa
+\SI{8.3}{ms}, fondo scala 3075 conteggi) e $\mathrm{AGAIN} = 16\times$.
+Come discusso nel Capitolo~\ref{ch:analisi}, questa configurazione,
+pensata per letture rapide in luce ambiente, determina conteggi molto
+bassi quando il tessuto è appoggiato sul sensore.
+
+È importante sottolineare che l'APDS-9960 \textbf{non dispone di un
+illuminatore nel visibile}: le letture di colore dipendono interamente
+dalla luce ambiente riflessa dal tessuto, il che rende indispensabile la
+normalizzazione descritta nel Capitolo~\ref{ch:software}.
+
+\subsection{Rilevamento di prossimità}
+
+Il blocco di prossimità sfrutta un LED IR integrato (\SI{950}{nm}) che
+emette una serie di impulsi (configurati dalla libreria a 16 impulsi da
+\SI{16}{\micro s}, registro \texttt{PPULSE = 0x8F}). La radiazione
+riflessa da un oggetto vicino viene raccolta da un fotodiodo IR
+dedicato; il segnale, depurato dalla componente ambiente, è convertito
+in un valore a 8 bit \texttt{PDATA} che \textbf{cresce all'avvicinarsi
+dell'oggetto}. La portata utile per superfici tessili è di pochi
+centimetri, ed è proprio questa caratteristica a rendere il sensore
+adatto a discriminare la presenza fisica di un capo indipendentemente
+dal suo colore: anche un tessuto nero riflette una frazione non nulla
+della radiazione nel vicino infrarosso.
+
+% ==== FINE CAPITOLI ====
+
+% ============================================================
+\begin{thebibliography}{9}
+\addcontentsline{toc}{chapter}{Bibliografia}
+
+\bibitem{nrf52840}
+Nordic Semiconductor,
+\textit{nRF52840 Product Specification v1.7}, 2021.
+
+\bibitem{apds9960}
+Broadcom (Avago Technologies),
+\textit{APDS-9960 Digital Proximity, Ambient Light, RGB and Gesture
+Sensor -- Data Sheet}, AV02-4191EN, 2015.
+
+\end{thebibliography}
+
+\end{document}

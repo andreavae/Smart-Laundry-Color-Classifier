@@ -1,0 +1,15 @@
+# Artefatti di compilazione Arduino
+build/
+compile.log
+
+# File ausiliari LaTeX
+report/*.aux
+report/*.log
+report/*.out
+report/*.toc
+report/*.lof
+report/*.lot
+report/*.lol
+report/*.fls
+report/*.fdb_latexmk
+report/*.synctex.gz
