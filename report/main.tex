@@ -679,7 +679,7 @@ deviazione standard campionaria $\sigma_r$ di $\rn$.
 \centering
 \caption{Statistiche delle letture per colore e condizione di illuminazione.}
 \label{tab:misure}
-\small
+\footnotesize
 \begin{tabular}{@{}llrrcccc@{}}
 \toprule
 \textbf{Colore} & \textbf{Condizione} & $n$ & $\bar{C}$ & $\bar{r}_{\mathrm{norm}}$ & $\bar{g}_{\mathrm{norm}}$ & $\bar{b}_{\mathrm{norm}}$ & $\sigma_r$ \\
@@ -765,7 +765,7 @@ dalla Sezione~\ref{sec:normalizzazione}.
 \addlegendentry{Giallo}
 \end{axis}
 \end{tikzpicture}
-\caption{Medie delle coordinate cromatiche nel piano $(\rn, \gn)$ per le tre
+\caption[Medie delle coordinate cromatiche nel piano $(\rn, \gn)$.]{Medie delle coordinate cromatiche nel piano $(\rn, \gn)$ per le tre
 condizioni di illuminazione. Il nero, sempre in $(0,0)$, è fuori scala.}
 \label{fig:piano_cromatico}
 \end{figure}
@@ -924,9 +924,9 @@ prove reali. La discrepanza ha due cause principali:
 \IfFileExists{img/ei/confusion_matrix.png}{%
   \includegraphics[width=0.85\textwidth]{confusion_matrix.png}%
 }{%
-  \fbox{\parbox{0.8\textwidth}{\centering\vspace{1.2cm}
+  \fbox{\parbox{0.8\textwidth}{\centering\vspace{0.6cm}
   Inserire lo screenshot della matrice di confusione di Edge Impulse
-  in \texttt{report/img/ei/confusion\_matrix.png}\vspace{1.2cm}}}%
+  in \texttt{report/img/ei/confusion\_matrix.png}\vspace{0.6cm}}}%
 }
 \caption{Matrice di confusione del modello sul validation set (Edge Impulse).}
 \label{fig:confusion}
@@ -947,28 +947,10 @@ Nordic Semiconductor. Dopo la scansione, il dispositivo
 stato connesso senza \textit{bonding}, sono state abilitate le
 notifiche sulla caratteristica \uuid{19b10001-\dots} scrivendo il
 descrittore CCCD (\texttt{0x2902}) e sono stati presentati in sequenza i
-campioni di tessuto. La Figura~\ref{fig:ble_full} mostra una schermata
-completa dell'app, la Figura~\ref{fig:ble_grid} il dettaglio della
-caratteristica per ciascuna prova; i risultati sono riassunti in
-Tabella~\ref{tab:collaudo}.
-
-\begin{figure}[htbp]
-\centering
-\begin{subfigure}[b]{0.24\textwidth}
-  \centering
-  \includegraphics[width=\textwidth]{originali/5994738378089369981.jpg}
-  \caption{Classe \texttt{BLUE}.}
-\end{subfigure}
-\hspace{1.5cm}
-\begin{subfigure}[b]{0.24\textwidth}
-  \centering
-  \includegraphics[width=\textwidth]{originali/5994738378089369988.jpg}
-  \caption{Classe \texttt{BLACK}.}
-\end{subfigure}
-\caption{Schermate complete di nRF Connect: servizio custom, caratteristica
-con proprietà \texttt{NOTIFY, READ} e notifiche abilitate.}
-\label{fig:ble_full}
-\end{figure}
+campioni di tessuto. La Figura~\ref{fig:ble_grid} riporta il dettaglio
+della caratteristica letta dall'app per ciascuna prova (le schermate
+complete sono archiviate in \texttt{report/img/ble/originali/}); i
+risultati sono riassunti in Tabella~\ref{tab:collaudo}.
 
 \begin{figure}[htbp]
 \centering
@@ -991,7 +973,7 @@ con proprietà \texttt{NOTIFY, READ} e notifiche abilitate.}
 \blepanel{ble_white34.jpg}{\texttt{WHITE (34\%)}}\hfill
 \blepanel{ble_nessuncapo_a.jpg}{\texttt{NESSUN\_CAPO}}\\[4pt]
 \blepanel{ble_nessuncapo_b.jpg}{\texttt{NESSUN\_CAPO}}
-\caption{Valori notificati sulla caratteristica \uuid{19B10001} durante il
+\caption[Valori notificati via BLE durante il collaudo (nRF Connect).]{Valori notificati sulla caratteristica \uuid{19B10001} durante il
 collaudo (campo \textit{Value}: byte esadecimali e stringa ASCII).
 $^{\dagger}$Ricostruzione grafica: la schermata della classe gialla non è
 stata acquisita durante la sessione e il pannello è stato composto a partire
@@ -1043,6 +1025,88 @@ Il canale BLE si è dimostrato affidabile: i payload, lunghi al massimo
 14 caratteri, rientrano in una singola notifica ATT anche con la MTU
 minima di 23 byte, e la connessione è rimasta stabile per tutta la
 durata della sessione.
+
+% ============================================================
+\chapter{Conclusioni e sviluppi futuri}
+\label{ch:conclusioni}
+
+\section{Sintesi dei risultati}
+
+Il progetto ha portato alla realizzazione di un classificatore
+cromatico di tessuti completamente autonomo, basato su un'unica scheda
+Arduino Nano 33 BLE Sense e privo di hardware esterno. Rispetto ai
+requisiti del Capitolo~\ref{ch:intro}:
+
+\begin{toollist}
+  \item[R1, R4 -- Classificazione a bordo]
+        Una rete neurale densa da 200 parametri, generata con Edge
+        Impulse ed EON Compiler in float32, distingue otto classi
+        cromatiche occupando \SI{800}{B} di pesi e \SI{336}{B} di arena,
+        con un tempo di inferenza trascurabile rispetto al periodo di
+        aggiornamento.
+  \item[R2 -- Robustezza all'illuminazione]
+        Le coordinate cromatiche normalizzate hanno reso le feature
+        sostanzialmente indipendenti dall'intensità della luce: per il
+        bianco, a fronte di una variazione di quasi 8 volte del segnale,
+        $\rn$ varia di meno di 0,01.
+  \item[R3 -- Rilevamento della presenza]
+        Il Proximity Gate basato sul canale IR dell'APDS-9960 ha risolto
+        l'ambiguità fisica tra tessuto nero e assenza di capi, che
+        l'informazione cromatica da sola non può distinguere.
+  \item[R5 -- Notifica wireless]
+        Il servizio GATT custom con caratteristica \texttt{NOTIFY} ha
+        consegnato in modo affidabile allo smartphone sia le
+        classificazioni (es. \texttt{BLUE (99\%)}, \texttt{PINK (99\%)},
+        \texttt{BLACK (99\%)}) sia lo stato \texttt{NESSUN\_CAPO}.
+\end{toollist}
+
+L'analisi sperimentale ha inoltre messo in luce il limite principale
+del prototipo: in assenza di un illuminatore nel visibile e con la
+configurazione predefinita del sensore, il segnale con il tessuto a
+contatto è di pochi conteggi, e la conseguente quantizzazione delle
+feature spiega sia le confidenze ridotte sulle classi centrali del piano
+cromatico sia la bassa accuratezza misurata sul validation set.
+
+\section{Sviluppi futuri}
+
+\begin{itemize}
+  \item \textbf{Configurazione del sensore}: aumentare il tempo di
+        integrazione (ATIME) fino a \SIrange{100}{200}{ms} e il guadagno
+        a $64\times$ porterebbe i conteggi da qualche unità a qualche
+        centinaio, riducendo di due ordini di grandezza l'errore di
+        quantizzazione delle coordinate normalizzate.
+  \item \textbf{Illuminazione attiva}: un LED bianco ad alta resa
+        cromatica (CRI $> 90$) affiancato al sensore renderebbe la
+        misura indipendente dalla luce ambiente, che all'interno di una
+        lavatrice è di fatto assente.
+  \item \textbf{Bilanciamento del bianco}: una calibrazione iniziale su
+        un riferimento bianco permetterebbe di compensare lo
+        sbilanciamento verso il rosso osservato
+        (Sezione~\ref{sec:illuminazione}).
+  \item \textbf{Dataset e robustezza}: ampliare il dataset con più
+        tessuti per classe (trame, materiali, colori misti) e un
+        validation set bilanciato, e applicare in firmware la soglia di
+        confidenza per notificare \texttt{INCERTO} quando la
+        probabilità massima è bassa.
+  \item \textbf{Ottimizzazione energetica}: sfruttare l'interrupt di
+        prossimità dell'APDS-9960 per mantenere il SoC in
+        \textit{sleep} fino all'avvicinamento di un capo, in vista di
+        un'alimentazione a batteria.
+\end{itemize}
+
+\section{Prospettive di integrazione commerciale}
+
+In un prodotto reale il modulo potrebbe essere integrato nella
+guarnizione o nel vetro dell'oblò, dietro una finestra ottica
+trasparente nel visibile e nel vicino infrarosso. All'inserimento di
+ciascun capo il Proximity Gate attiverebbe la lettura, e l'elettronica
+della lavatrice, o direttamente l'app dello smartphone, potrebbe
+confrontare il colore con il programma selezionato e segnalare in tempo
+reale un capo incompatibile (per esempio un capo rosso in un lavaggio
+di bianchi a \SI{60}{\celsius}). Il costo della soluzione è contenuto,
+dato che sensore e SoC BLE sono componenti di largo consumo, e
+l'inferenza a bordo evita qualunque dipendenza da servizi cloud,
+garantendo il funzionamento anche in assenza di connettività Internet.
 
 % ==== FINE CAPITOLI ====
 
