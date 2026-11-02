@@ -1,5 +1,4 @@
 # Smart-Laundry-Color-Classifier
-Arduino Project of a smart color classifier for laundry
 
 Progetto per l'insegnamento di **Laboratorio di Sensori** — Università degli Studi di Bergamo,
 Corso di Laurea in Ingegneria Informatica.
